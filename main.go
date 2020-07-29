@@ -3,14 +3,13 @@ package main
 import (
 	"net/http"
 
-	"github.com/google/uuid"
 	opentracing "github.com/opentracing/opentracing-go"
 	jaeger_config "github.com/uber/jaeger-client-go/config"
 	jaeger_metrics "github.com/uber/jaeger-lib/metrics/prometheus"
 )
 
 func main() {
-	initJaeger("instrumented-service")
+	initJaeger("tracing example")
 
 	server := instrumentedServer(handler)
 	server.ListenAndServe()
@@ -24,7 +23,6 @@ func instrumentedServer(handler http.HandlerFunc) *http.Server {
 	tracingMiddleware := func(w http.ResponseWriter, r *http.Request) {
 		span := opentracing.SpanFromContext(r.Context())
 		span.SetOperationName("Incoming HTTP Request")
-		span.SetTag("uuid", uuid.NewUUID())
 
 		handler(w, r)
 
