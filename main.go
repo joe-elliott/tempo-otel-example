@@ -1,16 +1,21 @@
 package main
 
 import (
+	"context"
 	"fmt"
+	"math/rand"
 	"net/http"
+	"time"
 
 	opentracing "github.com/opentracing/opentracing-go"
+	"github.com/opentracing/opentracing-go/ext"
 	jaeger_config "github.com/uber/jaeger-client-go/config"
-	jaeger_metrics "github.com/uber/jaeger-lib/metrics/prometheus"
 )
 
+var addr = "127.0.0.1:8000"
+
 func main() {
-	initJaeger("tracing example")
+	initJaeger("tracing-example")
 
 	server := instrumentedServer(handler)
 
@@ -19,20 +24,63 @@ func main() {
 }
 
 func handler(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
 
+	if shouldExecute(50) {
+		longRunningProcess(ctx)
+	}
+
+	// make downstream request
+	if shouldExecute(80) {
+		url := "http://" + addr + "/"
+
+		resp, err := instrumentedGet(ctx, url)
+		defer resp.Body.Close()
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+	}
 }
 
+func shouldExecute(percent int) bool {
+	return rand.Int()%100 < percent
+}
+
+func longRunningProcess(ctx context.Context) {
+	span, _ := opentracing.StartSpanFromContext(ctx, "Long Running Process")
+	defer span.Finish()
+
+	time.Sleep(time.Millisecond * 50)
+}
+
+/***
+Tracing
+***/
+func initJaeger(service string) {
+	cfg, err := jaeger_config.FromEnv()
+	if err != nil {
+		panic(err)
+	}
+
+	cfg.Reporter.LogSpans = true
+
+	cfg.InitGlobalTracer(service)
+}
+
+/***
+Server
+***/
 func instrumentedServer(handler http.HandlerFunc) *http.Server {
 	tracingMiddleware := func(w http.ResponseWriter, r *http.Request) {
-		span := opentracing.SpanFromContext(r.Context())
-		if span == nil {
-			span = opentracing.StartSpan("")
-		}
-		span.SetOperationName("Incoming HTTP Request")
+		tracer := opentracing.GlobalTracer()
+		spanCtx, _ := tracer.Extract(opentracing.HTTPHeaders, opentracing.HTTPHeadersCarrier(r.Header))
+
+		span := tracer.StartSpan("Incoming HTTP Request", ext.RPCServerOption(spanCtx))
+		defer span.Finish()
+
+		r = r.WithContext(opentracing.ContextWithSpan(r.Context(), span))
 
 		handler(w, r)
-
-		span.Finish()
 	}
 
 	return &http.Server{
@@ -41,12 +89,19 @@ func instrumentedServer(handler http.HandlerFunc) *http.Server {
 	}
 }
 
-// initJaeger returns an instance of Jaeger Tracer that samples 100% of traces and logs all spans to stdout.
-func initJaeger(service string) {
-	cfg, err := jaeger_config.FromEnv()
+/***
+Client
+***/
+func instrumentedGet(ctx context.Context, url string) (*http.Response, error) {
+	span, _ := opentracing.StartSpanFromContext(ctx, "Outgoing HTTP Request")
+	defer span.Finish()
+
+	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		panic(err)
 	}
-	metricsFactory := jaeger_metrics.New()
-	cfg.InitGlobalTracer(service, jaeger_config.Metrics(metricsFactory))
+
+	span.Tracer().Inject(span.Context(), opentracing.HTTPHeaders, opentracing.HTTPHeadersCarrier(req.Header))
+
+	return http.DefaultClient.Do(req)
 }
