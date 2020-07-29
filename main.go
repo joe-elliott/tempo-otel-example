@@ -33,7 +33,7 @@ func handler(w http.ResponseWriter, r *http.Request) {
 	// 	longRunningProcess(ctx)
 	// }
 
-	// make downstream request
+	// make upstream request
 	if shouldExecute(80) {
 		url := "http://" + addr + "/"
 
@@ -60,12 +60,12 @@ func longRunningProcess(ctx context.Context) {
 Tracing
 ***/
 func initJaeger(service string) {
+	// .FromEnv() uses standard environment variables to allow for easy configuration
+	//   see docker-compose.yaml
 	cfg, err := jaeger_config.FromEnv()
 	if err != nil {
 		panic(err)
 	}
-
-	cfg.Reporter.LogSpans = true
 
 	cfg.InitGlobalTracer(service)
 }
@@ -78,16 +78,20 @@ func instrumentedServer(handler http.HandlerFunc) *http.Server {
 	logger = log.With(logger, "ts", log.DefaultTimestampUTC)
 
 	tracingMiddleware := func(w http.ResponseWriter, r *http.Request) {
+		// extract trace context from http
 		tracer := opentracing.GlobalTracer()
 		spanCtx, _ := tracer.Extract(opentracing.HTTPHeaders, opentracing.HTTPHeadersCarrier(r.Header))
 
+		// inject trace context into Go context
+		r = r.WithContext(opentracing.ContextWithSpan(r.Context(), span))
+
+		// create span wrapping handling this http response
 		span := tracer.StartSpan("Incoming HTTP Request", ext.RPCServerOption(spanCtx))
 		defer span.Finish()
 
+		// log traceID
 		traceID := span.Context().(jaeger.SpanContext).TraceID()
 		logger.Log("traceID", traceID)
-
-		r = r.WithContext(opentracing.ContextWithSpan(r.Context(), span))
 
 		handler(w, r)
 	}
@@ -102,14 +106,17 @@ func instrumentedServer(handler http.HandlerFunc) *http.Server {
 Client
 ***/
 func instrumentedGet(ctx context.Context, url string) (*http.Response, error) {
+	// create span wrapping outgoing request
 	span, _ := opentracing.StartSpanFromContext(ctx, "Outgoing HTTP Request")
 	defer span.Finish()
 
+	// create http request
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		panic(err)
 	}
 
+	// inject trace context into http headers
 	span.Tracer().Inject(span.Context(), opentracing.HTTPHeaders, opentracing.HTTPHeadersCarrier(req.Header))
 
 	return http.DefaultClient.Do(req)
