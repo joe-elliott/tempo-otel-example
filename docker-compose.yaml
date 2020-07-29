@@ -1,0 +1,18 @@
+version: "2"
+services:
+  tracing-example:
+    image: tracing-example
+    ports:
+      - 8000:8000
+    environment:
+      - JAEGER_AGENT_HOST=jaeger
+      - JAEGER_AGENT_PORT=6831
+      - JAEGER_TAGS=app=tracing-example
+      - JAEGER_SAMPLER_TYPE=const
+      - JAEGER_SAMPLER_PARAM=1
+
+  jaeger:
+    image: jaegertracing/all-in-one
+    ports:
+      - 16686:16686
+      - "14268"

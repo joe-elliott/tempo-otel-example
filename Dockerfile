@@ -1,10 +1,3 @@
-FROM golang:1.12 as build
-WORKDIR /src
-
-COPY . .
-RUN go mod download && \
-    CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o app .
-
 FROM alpine:3.12
 
 RUN addgroup -g 1000 app && \
@@ -12,6 +5,6 @@ RUN addgroup -g 1000 app && \
 WORKDIR /app
 USER app
 
-COPY --from=build /src/app .
+COPY ./app .
 
 CMD ["./app"] 
