@@ -9,6 +9,7 @@ import (
 
 	opentracing "github.com/opentracing/opentracing-go"
 	"github.com/opentracing/opentracing-go/ext"
+	"github.com/uber/jaeger-client-go"
 	jaeger_config "github.com/uber/jaeger-client-go/config"
 )
 
@@ -64,7 +65,7 @@ func initJaeger(service string) {
 
 	cfg.Reporter.LogSpans = true
 
-	cfg.InitGlobalTracer(service)
+	cfg.InitGlobalTracer(service, jaeger_config.Logger(jaeger.StdLogger))
 }
 
 /***
