@@ -27,9 +27,9 @@ func main() {
 func handler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	if shouldExecute(50) {
-		longRunningProcess(ctx)
-	}
+	// if shouldExecute(50) {
+	// 	longRunningProcess(ctx)
+	// }
 
 	// make downstream request
 	if shouldExecute(80) {
