@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"net/http"
 
 	opentracing "github.com/opentracing/opentracing-go"
@@ -12,6 +13,8 @@ func main() {
 	initJaeger("tracing example")
 
 	server := instrumentedServer(handler)
+
+	fmt.Println("listening...")
 	server.ListenAndServe()
 }
 
@@ -22,6 +25,9 @@ func handler(w http.ResponseWriter, r *http.Request) {
 func instrumentedServer(handler http.HandlerFunc) *http.Server {
 	tracingMiddleware := func(w http.ResponseWriter, r *http.Request) {
 		span := opentracing.SpanFromContext(r.Context())
+		if span == nil {
+			span = opentracing.StartSpan("")
+		}
 		span.SetOperationName("Incoming HTTP Request")
 
 		handler(w, r)
