@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"math/rand"
 	"net/http"
+	"os"
 	"time"
 
+	"github.com/go-kit/kit/log"
 	opentracing "github.com/opentracing/opentracing-go"
 	"github.com/opentracing/opentracing-go/ext"
 	"github.com/uber/jaeger-client-go"
@@ -65,19 +67,25 @@ func initJaeger(service string) {
 
 	cfg.Reporter.LogSpans = true
 
-	cfg.InitGlobalTracer(service, jaeger_config.Logger(jaeger.StdLogger))
+	cfg.InitGlobalTracer(service)
 }
 
 /***
 Server
 ***/
 func instrumentedServer(handler http.HandlerFunc) *http.Server {
+	logger := log.NewLogfmtLogger(log.NewSyncWriter(os.Stdout))
+	logger = log.With(logger, "ts", log.DefaultTimestampUTC)
+
 	tracingMiddleware := func(w http.ResponseWriter, r *http.Request) {
 		tracer := opentracing.GlobalTracer()
 		spanCtx, _ := tracer.Extract(opentracing.HTTPHeaders, opentracing.HTTPHeadersCarrier(r.Header))
 
 		span := tracer.StartSpan("Incoming HTTP Request", ext.RPCServerOption(spanCtx))
 		defer span.Finish()
+
+		traceID := span.Context().(jaeger.SpanContext).TraceID()
+		logger.Log("traceID", traceID)
 
 		r = r.WithContext(opentracing.ContextWithSpan(r.Context(), span))
 

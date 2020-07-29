@@ -26,14 +26,14 @@ services:
   grafana:
     image: grafana/grafana:7.1.1
     volumes:
-    - ./config/datasource:/etc/grafana/provisioning/datasources
+    - ./config/datasource.yml:/etc/grafana/provisioning/datasources/datasource.yml
     ports:
     - "3000:3000"
 
   loki:
    image: grafana/loki:v1.3.0
    volumes:
-     - ./config:/etc/config
+     - ./config/loki.yaml:/etc/config/loki.yaml
    entrypoint:
      - /usr/bin/loki
      - -config.file=/etc/config/loki.yaml
