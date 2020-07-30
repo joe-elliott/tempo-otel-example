@@ -10,8 +10,6 @@ services:
       - JAEGER_TAGS=app=tracing-example
       - JAEGER_SAMPLER_TYPE=const
       - JAEGER_SAMPLER_PARAM=1
-    depends_on:
-      - loki
     logging:
       driver: loki
       options:

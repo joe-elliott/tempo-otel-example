@@ -29,10 +29,6 @@ func main() {
 func handler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	// if shouldExecute(50) {
-	// 	longRunningProcess(ctx)
-	// }
-
 	// make upstream request
 	if shouldExecute(80) {
 		url := "http://" + addr + "/"
@@ -82,12 +78,12 @@ func instrumentedServer(handler http.HandlerFunc) *http.Server {
 		tracer := opentracing.GlobalTracer()
 		spanCtx, _ := tracer.Extract(opentracing.HTTPHeaders, opentracing.HTTPHeadersCarrier(r.Header))
 
-		// inject trace context into Go context
-		r = r.WithContext(opentracing.ContextWithSpan(r.Context(), span))
-
 		// create span wrapping handling this http response
 		span := tracer.StartSpan("Incoming HTTP Request", ext.RPCServerOption(spanCtx))
 		defer span.Finish()
+
+		// inject trace context into Go context
+		r = r.WithContext(opentracing.ContextWithSpan(r.Context(), span))
 
 		// log traceID
 		traceID := span.Context().(jaeger.SpanContext).TraceID()
