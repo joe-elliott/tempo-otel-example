@@ -13,7 +13,7 @@ services:
     logging:
       driver: loki
       options:
-        loki-url: http://192.168.1.126:3100/loki/api/v1/push
+        loki-url: http://localhost:3100/loki/api/v1/push
 
   jaeger:
     image: jaegertracing/all-in-one
