@@ -29,8 +29,21 @@ func main() {
 func handler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	// make upstream request
-	if shouldExecute(80) {
+	longRunningProcess(ctx)
+
+	// check cache
+	if shouldExecute(40) {
+		url := "http://" + addr + "/"
+
+		resp, err := instrumentedGet(ctx, url)
+		defer resp.Body.Close()
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+	}
+
+	// query database
+	if shouldExecute(40) {
 		url := "http://" + addr + "/"
 
 		resp, err := instrumentedGet(ctx, url)
@@ -49,6 +62,9 @@ func longRunningProcess(ctx context.Context) {
 	span, _ := opentracing.StartSpanFromContext(ctx, "Long Running Process")
 	defer span.Finish()
 
+	span.SetTag("list length", 50)
+	time.Sleep(time.Millisecond * 50)
+	span.LogEvent("halfway done")
 	time.Sleep(time.Millisecond * 50)
 }
 
