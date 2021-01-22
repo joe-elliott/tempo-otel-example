@@ -150,7 +150,7 @@ func instrumentedGet(ctx context.Context, url string) (*http.Response, error) {
 	logger.Log("msg", "http request", "traceID", span.SpanContext().TraceID)
 
 	// create http request
-	req, err := http.NewRequest("GET", url, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		panic(err)
 	}
