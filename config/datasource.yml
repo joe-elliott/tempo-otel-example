@@ -17,7 +17,7 @@ datasources:
   editable: false
   jsonData:
     derivedFields:
-    - datasourceUid: jaeger
+    - datasourceUid: tempo
       matcherRegex: traceID=(\w+)
       name: TraceID
       url: $${__value.raw}

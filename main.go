@@ -25,11 +25,19 @@ import (
 var addr = "127.0.0.1:8000"
 var tracer trace.Tracer
 var httpClient http.Client
+var logger log.Logger
 
 func main() {
 	flush := initTracer()
 	defer flush()
 
+	// initiate globals
+	tracer = otel.Tracer("demo-app")
+	httpClient = http.Client{Transport: otelhttp.NewTransport(http.DefaultTransport)}
+	logger = log.NewLogfmtLogger(log.NewSyncWriter(os.Stdout))
+	logger = log.With(logger, "ts", log.DefaultTimestampUTC)
+
+	// create and start server
 	server := instrumentedServer(handler)
 
 	fmt.Println("listening...")
@@ -112,10 +120,6 @@ func initTracer() func() {
 	otel.SetTextMapPropagator(propagation.TraceContext{})
 	otel.SetTracerProvider(tracerProvider)
 
-	// global vars
-	tracer = otel.Tracer("demo-app")
-	httpClient = http.Client{Transport: otelhttp.NewTransport(http.DefaultTransport)}
-
 	return func() {
 		// Shutdown will flush any remaining spans.
 		handleErr(tracerProvider.Shutdown(ctx), "failed to shutdown TracerProvider")
@@ -126,9 +130,6 @@ func initTracer() func() {
 Server
 ***/
 func instrumentedServer(handler http.HandlerFunc) *http.Server {
-	logger := log.NewLogfmtLogger(log.NewSyncWriter(os.Stdout))
-	logger = log.With(logger, "ts", log.DefaultTimestampUTC)
-
 	otelHandler := otelhttp.NewHandler(handler, "request")
 
 	tracingMiddleware := func(w http.ResponseWriter, r *http.Request) {
@@ -145,6 +146,9 @@ func instrumentedServer(handler http.HandlerFunc) *http.Server {
 Client
 ***/
 func instrumentedGet(ctx context.Context, url string) (*http.Response, error) {
+	span := trace.SpanFromContext(ctx)
+	logger.Log("msg", "http request", "traceID", span.SpanContext().TraceID)
+
 	// create http request
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
