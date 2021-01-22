@@ -21,11 +21,11 @@ datasources:
       matcherRegex: traceID=(\w+)
       name: TraceID
       url: $${__value.raw}
-- name: jaeger
-  type: jaeger
-  uid: jaeger
+- name: tempo
+  type: tempo
+  uid: tempo
   access: 'browser'
-  url: http://jaeger:16686
+  url: http://tempo-query:16686
   isDefault: false
   version: 1
   editable: false

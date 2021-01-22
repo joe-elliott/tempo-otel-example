@@ -4,43 +4,53 @@ services:
     image: tracing-example
     ports:
       - 8000:8000
-    environment:
-      - JAEGER_AGENT_HOST=jaeger
-      - JAEGER_AGENT_PORT=6831
-      - JAEGER_TAGS=app=tracing-example
-      - JAEGER_SAMPLER_TYPE=const
-      - JAEGER_SAMPLER_PARAM=1
     logging:
       driver: loki
       options:
         loki-url: http://localhost:3100/loki/api/v1/push
 
-  jaeger:
-    image: jaegertracing/all-in-one
+  tempo:
+    image: grafana/tempo:0.5.0
+    command: ["--target=all", "--storage.trace.backend=local", "--storage.trace.local.path=/var/tempo", "--auth.enabled=false"]
     ports:
-      - 16686:16686
-      - "14268"
+    - 8081:80
+    logging:
+      driver: loki
+      options:
+        loki-url: 'http://localhost:3100/api/prom/push'
+
+  tempo-query:
+    image: grafana/tempo-query:latest
+    environment:
+    - BACKEND=tempo:80
+    volumes:
+    - ./etc/tempo-query.yaml:/etc/tempo-query.yaml
+    ports:
+    - "16686:16686"  # jaeger-ui
+    depends_on:
+    - tempo
+    logging:
+      driver: loki
+      options:
+        loki-url: 'http://localhost:3100/api/prom/push'
 
   grafana:
-    image: grafana/grafana:7.1.1
+    image: grafana/grafana:7.3.7
     volumes:
     - ./config/datasource.yml:/etc/grafana/provisioning/datasources/datasource.yml
+    environment:
+    - GF_AUTH_ANONYMOUS_ENABLED=true
+    - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+    - GF_AUTH_DISABLE_LOGIN_FORM=true
     ports:
     - "3000:3000"
 
   loki:
-   image: grafana/loki:v1.3.0
-   volumes:
-     - ./config/loki.yaml:/etc/config/loki.yaml
-   entrypoint:
-     - /usr/bin/loki
-     - -config.file=/etc/config/loki.yaml
-   ports:
-     - "3100:3100"
-   depends_on:
-     - jaeger
-   environment:
-     - JAEGER_AGENT_HOST=jaeger
-     - JAEGER_AGENT_PORT=6831
-     - JAEGER_SAMPLER_TYPE=const
-     - JAEGER_SAMPLER_PARAM=1
+    image: grafana/loki:2.1.0
+    command: -config.file=/etc/loki/local-config.yaml
+    ports:
+    - "3100:3100"
+    logging:
+      driver: loki
+      options:
+        loki-url: 'http://localhost:3100/api/prom/push'

@@ -6,19 +6,29 @@ import (
 	"math/rand"
 	"net/http"
 	"os"
-	"time"
+
+	"google.golang.org/grpc"
 
 	"github.com/go-kit/kit/log"
-	opentracing "github.com/opentracing/opentracing-go"
-	"github.com/opentracing/opentracing-go/ext"
-	"github.com/uber/jaeger-client-go"
-	jaeger_config "github.com/uber/jaeger-client-go/config"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/exporters/otlp"
+	"go.opentelemetry.io/otel/exporters/otlp/otlpgrpc"
+	"go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel/sdk/resource"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/semconv"
+	"go.opentelemetry.io/otel/trace"
 )
 
+// global vars...gasp!
 var addr = "127.0.0.1:8000"
+var tracer trace.Tracer
+var httpClient http.Client
 
 func main() {
-	initJaeger("tracing-example")
+	flush := initTracer()
+	defer flush()
 
 	server := instrumentedServer(handler)
 
@@ -59,27 +69,57 @@ func shouldExecute(percent int) bool {
 }
 
 func longRunningProcess(ctx context.Context) {
-	span, _ := opentracing.StartSpanFromContext(ctx, "Long Running Process")
-	defer span.Finish()
+	//span, _ := opentracing.StartSpanFromContext(ctx, "Long Running Process")
+	//defer span.Finish()
 
-	span.SetTag("list length", 50)
-	time.Sleep(time.Millisecond * 50)
-	span.LogEvent("halfway done")
-	time.Sleep(time.Millisecond * 50)
+	//span.SetTag("list length", 50)
+	//time.Sleep(time.Millisecond * 50)
+	//span.LogEvent("halfway done")
+	//time.Sleep(time.Millisecond * 50)
 }
 
 /***
 Tracing
 ***/
-func initJaeger(service string) {
-	// .FromEnv() uses standard environment variables to allow for easy configuration
-	//   see docker-compose.yaml
-	cfg, err := jaeger_config.FromEnv()
-	if err != nil {
-		panic(err)
-	}
+// Initializes an OTLP exporter, and configures the trace provider
+func initTracer() func() {
+	ctx := context.Background()
 
-	cfg.InitGlobalTracer(service)
+	driver := otlpgrpc.NewDriver(
+		otlpgrpc.WithInsecure(),
+		otlpgrpc.WithEndpoint("tempo:55680"),
+		otlpgrpc.WithDialOption(grpc.WithBlock()), // useful for testing
+	)
+	exp, err := otlp.NewExporter(ctx, driver)
+	handleErr(err, "failed to create exporter")
+
+	res, err := resource.New(ctx,
+		resource.WithAttributes(
+			// the service name used to display traces in backends
+			semconv.ServiceNameKey.String("demo-service"),
+		),
+	)
+	handleErr(err, "failed to create resource")
+
+	bsp := sdktrace.NewBatchSpanProcessor(exp)
+	tracerProvider := sdktrace.NewTracerProvider(
+		sdktrace.WithConfig(sdktrace.Config{DefaultSampler: sdktrace.AlwaysSample()}),
+		sdktrace.WithResource(res),
+		sdktrace.WithSpanProcessor(bsp),
+	)
+
+	// set global propagator to tracecontext (the default is no-op).
+	otel.SetTextMapPropagator(propagation.TraceContext{})
+	otel.SetTracerProvider(tracerProvider)
+
+	// global vars
+	tracer = otel.Tracer("demo-app")
+	httpClient = http.Client{Transport: otelhttp.NewTransport(http.DefaultTransport)}
+
+	return func() {
+		// Shutdown will flush any remaining spans.
+		handleErr(tracerProvider.Shutdown(ctx), "failed to shutdown TracerProvider")
+	}
 }
 
 /***
@@ -89,23 +129,10 @@ func instrumentedServer(handler http.HandlerFunc) *http.Server {
 	logger := log.NewLogfmtLogger(log.NewSyncWriter(os.Stdout))
 	logger = log.With(logger, "ts", log.DefaultTimestampUTC)
 
+	otelHandler := otelhttp.NewHandler(handler, "request")
+
 	tracingMiddleware := func(w http.ResponseWriter, r *http.Request) {
-		// extract trace context from http
-		tracer := opentracing.GlobalTracer()
-		spanCtx, _ := tracer.Extract(opentracing.HTTPHeaders, opentracing.HTTPHeadersCarrier(r.Header))
-
-		// create span wrapping handling this http response
-		span := tracer.StartSpan("Incoming HTTP Request", ext.RPCServerOption(spanCtx))
-		defer span.Finish()
-
-		// inject trace context into Go context
-		r = r.WithContext(opentracing.ContextWithSpan(r.Context(), span))
-
-		// log traceID
-		traceID := span.Context().(jaeger.SpanContext).TraceID()
-		logger.Log("traceID", traceID)
-
-		handler(w, r)
+		otelHandler.ServeHTTP(w, r)
 	}
 
 	return &http.Server{
@@ -118,18 +145,17 @@ func instrumentedServer(handler http.HandlerFunc) *http.Server {
 Client
 ***/
 func instrumentedGet(ctx context.Context, url string) (*http.Response, error) {
-	// create span wrapping outgoing request
-	span, _ := opentracing.StartSpanFromContext(ctx, "Outgoing HTTP Request")
-	defer span.Finish()
-
 	// create http request
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		panic(err)
 	}
 
-	// inject trace context into http headers
-	span.Tracer().Inject(span.Context(), opentracing.HTTPHeaders, opentracing.HTTPHeadersCarrier(req.Header))
+	return httpClient.Do(req)
+}
 
-	return http.DefaultClient.Do(req)
+func handleErr(err error, message string) {
+	if err != nil {
+		panic(fmt.Sprintf("%s: %s", err, message))
+	}
 }
