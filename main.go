@@ -160,7 +160,7 @@ func instrumentedServer(handler http.HandlerFunc) *http.Server {
 			time.Since(start).Seconds(), prometheus.Labels{"traceID": span.SpanContext().TraceID.String()},
 		)
 
-		logger.Log("msg", "http request", "traceID", span.SpanContext().TraceID)
+		logger.Log("msg", "http request", "traceID", span.SpanContext().TraceID, "path", r.URL.Path, "latency", time.Since(start))
 	}
 
 	r := mux.NewRouter()
