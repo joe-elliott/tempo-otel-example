@@ -89,13 +89,12 @@ func shouldExecute(percent int) bool {
 }
 
 func longRunningProcess(ctx context.Context) {
-	//span, _ := opentracing.StartSpanFromContext(ctx, "Long Running Process")
-	//defer span.Finish()
+	ctx, sp := tracer.Start(ctx, "Long Running Process")
+	defer sp.End()
 
-	//span.SetTag("list length", 50)
-	//time.Sleep(time.Millisecond * 50)
-	//span.LogEvent("halfway done")
-	//time.Sleep(time.Millisecond * 50)
+	time.Sleep(time.Millisecond * 50)
+	sp.AddEvent("halfway done!")
+	time.Sleep(time.Millisecond * 50)
 }
 
 /***
