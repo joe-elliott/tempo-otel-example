@@ -141,29 +141,28 @@ func initTracer() func() {
 Server
 ***/
 func instrumentedServer(handler http.HandlerFunc) *http.Server {
-	tracingMiddleware := func(w http.ResponseWriter, r *http.Request) {
-		p := otel.GetTextMapPropagator()
-		opts := []trace.SpanOption{
-			trace.WithAttributes(semconv.NetAttributesFromHTTPRequest("tcp", r)...),
-			trace.WithAttributes(semconv.EndUserAttributesFromHTTPRequest(r)...),
-			trace.WithAttributes(semconv.HTTPServerAttributesFromHTTPRequest("", "", r)...),
-		}
-
-		ctx := p.Extract(r.Context(), r.Header)
-		ctx, span := tracer.Start(ctx, r.Method+" - "+r.URL.Path, opts...)
-		defer span.End()
-
+	// OpenMetrics handler : metrics and exemplars
+	omHandleFunc := func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
-		handler(w, r.WithContext(ctx))
+
+		handler.ServeHTTP(w, r)
+
+		ctx := r.Context()
+		traceID := trace.SpanContextFromContext(ctx).TraceID.String()
+
 		metricRequestLatency.(prometheus.ExemplarObserver).ObserveWithExemplar(
-			time.Since(start).Seconds(), prometheus.Labels{"traceID": span.SpanContext().TraceID.String()},
+			time.Since(start).Seconds(), prometheus.Labels{"traceID": traceID},
 		)
 
-		logger.Log("msg", "http request", "traceID", span.SpanContext().TraceID, "path", r.URL.Path, "latency", time.Since(start))
+		// log the trace id with other fields so we can discover traces through logs
+		logger.Log("msg", "http request", "traceID", traceID, "path", r.URL.Path, "latency", time.Since(start))
 	}
 
+	// OTel handler : traces
+	otelHandler := otelhttp.NewHandler(http.HandlerFunc(omHandleFunc), "http")
+
 	r := mux.NewRouter()
-	r.HandleFunc("/", http.HandlerFunc(tracingMiddleware))
+	r.Handle("/", otelHandler)
 	r.Handle("/metrics", promhttp.HandlerFor(prometheus.DefaultGatherer, promhttp.HandlerOpts{
 		EnableOpenMetrics: true,
 	}))
