@@ -24,7 +24,7 @@ This example shows a mixture of otel and prometheus instrumentation in go.  It i
 - Go to the explore page
 - Choose the prometheus datasource and execute `histogram_quantile(.99, sum(rate(demo_request_latency_seconds_bucket[1m])) by (le))`
 
-![Exemplars](./exemplars.png)
+![Exemplars](./exemplar.png)
 
 - Choose the Loki datasource and execute `{container_name="tracingexample_tracing-example_1"} | logfmt | latency > 1s`
 
