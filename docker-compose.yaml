@@ -20,7 +20,7 @@ services:
         loki-url: 'http://localhost:3100/api/prom/push'
 
   tempo-query:
-    image: grafana/tempo-query:latest
+    image: grafana/tempo-query:0.5.0
     environment:
     - BACKEND=tempo:80
     volumes:
