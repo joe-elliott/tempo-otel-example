@@ -38,6 +38,6 @@ From Exemplars:
 
 From Logs:
 
-- Choose the Loki datasource and execute `{container_name="tempootelexample_tracing-example_1"} | logfmt | latency > 1s`
+- Choose the Loki datasource and execute `{container_name="tempo-otel-example_tracing-example_1"} | logfmt | latency > 1s`
 
 ![Loki Derived Fields](./loki.png)
